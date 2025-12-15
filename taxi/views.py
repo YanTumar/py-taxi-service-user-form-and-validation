@@ -1,29 +1,20 @@
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy, reverse
 from django.views import generic
-from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import get_user_model
 
-from .models import (
-    Driver,
-    Car,
-    Manufacturer,
-)
-from .forms import (
-    DriverCreationForm,
-    DriverLicenseUpdateForm,
-    CarForm,
-)
+from taxi.forms import CarForm, DriverCreationForm, DriverLicenseUpdateForm
+from taxi.models import Manufacturer, Car
 
 
-@login_required
 def index(request):
-
-    num_drivers = Driver.objects.count()
+    """View function for the home page of the site."""
+    num_drivers = get_user_model().objects.count()
     num_cars = Car.objects.count()
     num_manufacturers = Manufacturer.objects.count()
-
     num_visits = request.session.get("num_visits", 0)
     request.session["num_visits"] = num_visits + 1
 
@@ -34,7 +25,8 @@ def index(request):
         "num_visits": num_visits + 1,
     }
 
-    return render(request, "taxi/index.html", context=context)
+    return generic.TemplateView.as_view(template_name="taxi/index.html",
+                                        extra_context=context)(request)
 
 
 class ManufacturerListView(LoginRequiredMixin, generic.ListView):
@@ -72,9 +64,9 @@ class CarDetailView(LoginRequiredMixin, generic.DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["is_driver"] = self.object.drivers.filter(
-            id=self.request.user.id
-        ).exists()
+        car = self.get_object()
+        user = self.request.user
+        context["is_driver"] = user in car.drivers.all()
         return context
 
 
@@ -105,7 +97,7 @@ def assign_driver_to_car(request, pk):
     else:
         car.drivers.add(user)
 
-    return redirect(reverse("taxi:car-detail", kwargs={"pk": pk}))
+    return HttpResponseRedirect(reverse("taxi:car-detail", args=[pk]))
 
 
 class DriverListView(LoginRequiredMixin, generic.ListView):
@@ -115,25 +107,24 @@ class DriverListView(LoginRequiredMixin, generic.ListView):
 
 class DriverDetailView(LoginRequiredMixin, generic.DetailView):
     model = get_user_model()
-    queryset = (get_user_model().objects.all().prefetch_related
-                ("cars__manufacturer"))
 
 
-class DriverCreateView(LoginRequiredMixin, generic.CreateView):
+class DriverCreateView(generic.CreateView):
     model = get_user_model()
     form_class = DriverCreationForm
-    success_url = reverse_lazy("taxi:driver-list")
-    template_name = "taxi/driver_form.html"
 
 
 class DriverLicenseUpdateView(LoginRequiredMixin, generic.UpdateView):
     model = get_user_model()
     form_class = DriverLicenseUpdateForm
-    success_url = reverse_lazy("taxi:driver-list")
     template_name = "taxi/driver_license_update.html"
+    success_url = reverse_lazy("taxi:driver-list")
+
+    def get_success_url(self):
+        return reverse_lazy("taxi:driver-detail",
+                            kwargs={"pk": self.object.pk})
 
 
 class DriverDeleteView(LoginRequiredMixin, generic.DeleteView):
     model = get_user_model()
     success_url = reverse_lazy("taxi:driver-list")
-    template_name = "taxi/driver_confirm_delete.html"
