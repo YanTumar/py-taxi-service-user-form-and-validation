@@ -20,7 +20,8 @@ def validate_license_number(license_number):
         )
 
     if len(license_number) != 8:
-        raise ValidationError("License number must be exactly 8 characters long.")
+        raise ValidationError("License number must be exactly "
+                              "8 characters long.")
 
     return license_number
 
